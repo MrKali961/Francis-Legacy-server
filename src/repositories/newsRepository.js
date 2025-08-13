@@ -1,0 +1,66 @@
+const pool = require('../config/database');
+
+class NewsRepository {
+  async getAll() {
+    const result = await pool.query(`
+      SELECT 
+        na.id, na.title, na.slug, na.excerpt, na.content, na.featured_image_url,
+        na.status, na.created_at, na.updated_at, na.published_at,
+        u.first_name as author_first_name, u.last_name as author_last_name
+      FROM news_articles na
+      LEFT JOIN users u ON na.author_id = u.id
+      WHERE na.status = 'published'
+      ORDER BY na.published_at DESC
+    `);
+    return result.rows;
+  }
+
+  async findBySlug(slug) {
+    const result = await pool.query(`
+      SELECT 
+        na.id, na.title, na.slug, na.excerpt, na.content, na.featured_image_url,
+        na.status, na.created_at, na.updated_at, na.published_at,
+        u.first_name as author_first_name, u.last_name as author_last_name
+      FROM news_articles na
+      LEFT JOIN users u ON na.author_id = u.id
+      WHERE na.slug = $1 AND na.status = 'published'
+    `, [slug]);
+    return result.rows[0];
+  }
+
+  async create(articleData) {
+    const { title, slug, excerpt, content, featuredImageUrl, authorId, status = 'draft' } = articleData;
+    const result = await pool.query(`
+      INSERT INTO news_articles 
+      (title, slug, excerpt, content, featured_image_url, author_id, status, created_at, updated_at, published_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), ${status === 'published' ? 'NOW()' : 'NULL'})
+      RETURNING *
+    `, [title, slug, excerpt, content, featuredImageUrl, authorId, status]);
+    return result.rows[0];
+  }
+
+  async update(id, articleData) {
+    const { title, slug, excerpt, content, featuredImageUrl, status } = articleData;
+    const result = await pool.query(`
+      UPDATE news_articles 
+      SET title = $1, slug = $2, excerpt = $3, content = $4, featured_image_url = $5, 
+          status = $6, updated_at = NOW(),
+          published_at = CASE WHEN $6 = 'published' AND published_at IS NULL THEN NOW() ELSE published_at END
+      WHERE id = $7
+      RETURNING *
+    `, [title, slug, excerpt, content, featuredImageUrl, status, id]);
+    return result.rows[0];
+  }
+
+  async delete(id) {
+    const result = await pool.query('DELETE FROM news_articles WHERE id = $1 RETURNING *', [id]);
+    return result.rows[0];
+  }
+
+  async getPublishedCount() {
+    const result = await pool.query('SELECT COUNT(*) as total FROM news_articles WHERE status = $1', ['published']);
+    return parseInt(result.rows[0].total);
+  }
+}
+
+module.exports = new NewsRepository();
