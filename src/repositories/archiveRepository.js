@@ -82,14 +82,14 @@ class ArchiveRepository {
         date_taken,
         location,
         person_related,
-        s3_key // New field for S3 integration
+        imagekit_file_id // New field for ImageKit integration
       } = archiveData;
 
       const query = `
         INSERT INTO archive_items (
           title, description, file_url, file_type, file_size, 
           category, tags, date_taken, location, person_related,
-          s3_key, uploaded_by, status
+          imagekit_file_id, uploaded_by, status
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'published')
         RETURNING *
       `;
@@ -105,7 +105,7 @@ class ArchiveRepository {
         date_taken,
         location,
         person_related,
-        s3_key,
+        imagekit_file_id,
         userId
       ];
 
@@ -165,7 +165,7 @@ class ArchiveRepository {
       const query = `
         DELETE FROM archive_items 
         WHERE id = $1 AND uploaded_by = $2
-        RETURNING s3_key
+        RETURNING imagekit_file_id
       `;
       
       const result = await pool.query(query, [id, userId]);

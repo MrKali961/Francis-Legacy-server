@@ -59,7 +59,7 @@ const authLimiter = rateLimit({
 
 // CORS configuration - environment specific
 const corsOptions = {
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://francislegacy.org', 'https://francis-legacy.vercel.app/'],
+  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176', 'http://localhost:5177', 'http://localhost:3000', 'https://francislegacy.org', 'https://francis-legacy.vercel.app/'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -97,6 +97,127 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/timeline', timelineRoutes);
 app.use('/api/archives', archiveRoutes);
+
+// Public stats endpoint for homepage
+app.get('/api/stats', async (req, res) => {
+  try {
+    const pool = require('./config/database');
+    
+    const stats = await Promise.all([
+      pool.query('SELECT COUNT(*) as total FROM family_members'),
+      pool.query('SELECT COUNT(*) as total FROM archive_items WHERE status IN ($1, $2)', ['published', 'approved']),
+      pool.query('SELECT COUNT(*) as total FROM blog_posts WHERE status = $1', ['published']),
+      pool.query('SELECT COUNT(*) as total FROM news_articles WHERE status = $1', ['published']),
+      pool.query(`
+        SELECT 
+          EXTRACT(YEAR FROM MIN(event_date)) as oldest_year,
+          EXTRACT(YEAR FROM MAX(event_date)) as newest_year,
+          COUNT(*) as total_events
+        FROM timeline_events
+      `),
+    ]);
+
+    const familyMembers = parseInt(stats[0].rows[0].total);
+    const archiveItems = parseInt(stats[1].rows[0].total);
+    const blogPosts = parseInt(stats[2].rows[0].total);
+    const newsArticles = parseInt(stats[3].rows[0].total);
+    
+    // Calculate years of history from timeline
+    const timelineData = stats[4].rows[0];
+    const totalEvents = parseInt(timelineData.total_events);
+    let yearsOfHistory = '150+'; // fallback
+    
+    if (totalEvents > 0 && timelineData.oldest_year && timelineData.newest_year) {
+      const yearDiff = parseInt(timelineData.newest_year) - parseInt(timelineData.oldest_year);
+      yearsOfHistory = yearDiff > 0 ? `${yearDiff}+` : '1';
+    }
+
+    res.json({
+      familyMembers: familyMembers || 0,
+      yearsOfHistory: yearsOfHistory,
+      photosAndMedia: archiveItems || 0,
+      storiesAndDocuments: (blogPosts + newsArticles) || 0,
+    });
+  } catch (error) {
+    console.error('Error fetching public stats:', error);
+    // Return fallback stats in case of database error
+    res.json({
+      familyMembers: 0,
+      yearsOfHistory: '150+',
+      photosAndMedia: 0,
+      storiesAndDocuments: 0,
+    });
+  }
+});
+
+// Public family history stats endpoint
+app.get('/api/family-history/stats', async (req, res) => {
+  try {
+    const pool = require('./config/database');
+    
+    const stats = await Promise.all([
+      // Years of documented history from timeline
+      pool.query(`
+        SELECT 
+          EXTRACT(YEAR FROM MIN(event_date)) as oldest_year,
+          EXTRACT(YEAR FROM MAX(event_date)) as newest_year,
+          COUNT(*) as total_events
+        FROM timeline_events
+      `),
+      // Count distinct generations
+      pool.query(`
+        SELECT COUNT(DISTINCT generation) as generations
+        FROM family_members 
+        WHERE generation IS NOT NULL
+      `),
+      // Count distinct countries/locations
+      pool.query(`
+        SELECT COUNT(DISTINCT location) as locations
+        FROM timeline_events 
+        WHERE location IS NOT NULL AND location != ''
+        UNION ALL
+        SELECT COUNT(DISTINCT birth_place) as locations
+        FROM family_members 
+        WHERE birth_place IS NOT NULL AND birth_place != ''
+      `),
+    ]);
+
+    // Calculate years of history
+    const timelineData = stats[0].rows[0];
+    const totalEvents = parseInt(timelineData.total_events);
+    let yearsOfHistory = '150+';
+    
+    if (totalEvents > 0 && timelineData.oldest_year && timelineData.newest_year) {
+      const yearDiff = parseInt(timelineData.newest_year) - parseInt(timelineData.oldest_year);
+      yearsOfHistory = yearDiff > 0 ? `${yearDiff}+` : '1';
+    }
+
+    // Count generations
+    const generations = parseInt(stats[1].rows[0].generations) || 5;
+
+    // Count unique locations (combining timeline and family member locations)
+    let uniqueLocations = 0;
+    const locationResults = stats[2].rows;
+    locationResults.forEach(row => {
+      uniqueLocations += parseInt(row.locations) || 0;
+    });
+    uniqueLocations = Math.max(uniqueLocations, 1); // At least 1
+
+    res.json({
+      yearsOfHistory: yearsOfHistory,
+      generations: generations,
+      locations: uniqueLocations,
+    });
+  } catch (error) {
+    console.error('Error fetching family history stats:', error);
+    // Return fallback stats in case of database error
+    res.json({
+      yearsOfHistory: '150+',
+      generations: 5,
+      locations: 12,
+    });
+  }
+});
 
 // 404 handler
 app.use('*', (req, res) => {

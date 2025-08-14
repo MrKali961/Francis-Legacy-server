@@ -1,144 +1,111 @@
 const express = require('express');
-const s3Service = require('../services/s3Service');
+const imagekitService = require('../services/imagekitService');
 const { authenticateToken } = require('../middleware/auth');
+const multer = require('multer');
 const router = express.Router();
 
-// Generate presigned URL for secure client-side upload
-router.post('/:folder/presigned-url', authenticateToken, async (req, res) => {
-  try {
-    const { fileName, fileType, fileSize } = req.body;
-    const { folder } = req.params;
+// Configure multer for file uploads
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 100 * 1024 * 1024 // 100MB max
+  }
+});
 
-    if (!fileName || !fileType) {
-      return res.status(400).json({ error: 'fileName and fileType are required' });
+// Get ImageKit authentication parameters for client-side upload
+router.get('/auth', authenticateToken, async (req, res) => {
+  try {
+    const authParams = imagekitService.generateUploadAuth();
+    
+    res.json({
+      message: 'ImageKit authentication parameters generated',
+      ...authParams,
+      uploadEndpoint: 'https://upload.imagekit.io/api/v1/files/upload'
+    });
+  } catch (error) {
+    console.error('ImageKit auth generation error:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate authentication' });
+  }
+});
+
+// Server-side file upload to ImageKit
+router.post('/:folder/upload', authenticateToken, upload.single('file'), async (req, res) => {
+  try {
+    const { folder } = req.params;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: 'No file provided' });
     }
 
     // Validate file type
-    if (!s3Service.isAllowedFileType(fileType)) {
+    if (!imagekitService.isAllowedFileType(file.mimetype)) {
       return res.status(400).json({ error: 'File type not allowed' });
     }
 
-    // Get appropriate size limit for file type
-    const sizeLimit = s3Service.getFileSizeLimit(fileType);
-    
-    // Check if provided file size exceeds limit
-    if (fileSize && fileSize > sizeLimit) {
+    // Check file size limit
+    const sizeLimit = imagekitService.getFileSizeLimit(file.mimetype);
+    if (file.size > sizeLimit) {
       return res.status(400).json({ 
         error: `File size exceeds limit of ${Math.round(sizeLimit / (1024 * 1024))}MB` 
       });
     }
 
-    const presignedData = await s3Service.generatePresignedUploadUrl(
-      folder, 
-      fileName, 
-      fileType, 
-      sizeLimit
-    );
+    const uploadResult = await imagekitService.uploadFile(file, folder);
 
     res.json({
-      message: 'Presigned URL generated successfully',
-      uploadData: presignedData
+      message: 'File uploaded successfully',
+      file: uploadResult
     });
   } catch (error) {
-    console.error('Presigned URL generation error:', error);
-    res.status(500).json({ error: error.message || 'Failed to generate upload URL' });
+    console.error('File upload error:', error);
+    res.status(500).json({ error: error.message || 'Failed to upload file' });
   }
 });
 
-// Generate multiple presigned URLs for batch upload
-router.post('/:folder/multiple/presigned-urls', authenticateToken, async (req, res) => {
+// Get file details from ImageKit
+router.get('/file/:fileId', authenticateToken, async (req, res) => {
   try {
-    const { files } = req.body; // Array of {fileName, fileType, fileSize}
-    const { folder } = req.params;
-
-    if (!files || !Array.isArray(files) || files.length === 0) {
-      return res.status(400).json({ error: 'files array is required' });
-    }
-
-    if (files.length > 10) {
-      return res.status(400).json({ error: 'Maximum 10 files allowed per batch' });
-    }
-
-    const uploadDataArray = [];
-    const errors = [];
-
-    for (const file of files) {
-      const { fileName, fileType, fileSize } = file;
-
-      if (!fileName || !fileType) {
-        errors.push(`File missing fileName or fileType: ${JSON.stringify(file)}`);
-        continue;
-      }
-
-      // Validate file type
-      if (!s3Service.isAllowedFileType(fileType)) {
-        errors.push(`File type not allowed for ${fileName}: ${fileType}`);
-        continue;
-      }
-
-      // Get appropriate size limit
-      const sizeLimit = s3Service.getFileSizeLimit(fileType);
-      
-      if (fileSize && fileSize > sizeLimit) {
-        errors.push(`File size exceeds limit for ${fileName}: ${Math.round(sizeLimit / (1024 * 1024))}MB`);
-        continue;
-      }
-
-      try {
-        const presignedData = await s3Service.generatePresignedUploadUrl(
-          folder, 
-          fileName, 
-          fileType, 
-          sizeLimit
-        );
-        uploadDataArray.push({ fileName, ...presignedData });
-      } catch (error) {
-        errors.push(`Failed to generate URL for ${fileName}: ${error.message}`);
-      }
-    }
-
-    if (errors.length > 0 && uploadDataArray.length === 0) {
-      return res.status(400).json({ error: 'All files failed validation', details: errors });
-    }
-
+    const { fileId } = req.params;
+    const fileDetails = await imagekitService.getFileDetails(fileId);
+    
     res.json({
-      message: 'Presigned URLs generated successfully',
-      uploadDataArray,
-      errors: errors.length > 0 ? errors : undefined
+      message: 'File details retrieved successfully',
+      file: fileDetails
     });
   } catch (error) {
-    console.error('Multiple presigned URL generation error:', error);
-    res.status(500).json({ error: 'Failed to generate upload URLs' });
+    console.error('File details retrieval error:', error);
+    res.status(404).json({ error: error.message || 'Failed to get file details' });
   }
 });
 
-// Generate presigned URL for file download
-router.get('/:folder/:key/download', authenticateToken, async (req, res) => {
+// Generate URL with transformations
+router.post('/url', authenticateToken, async (req, res) => {
   try {
-    const { folder, key } = req.params;
-    const fullKey = `${folder}/${key}`;
-
-    const downloadUrl = await s3Service.generatePresignedDownloadUrl(fullKey);
-
+    const { path, transformations } = req.body;
+    
+    if (!path) {
+      return res.status(400).json({ error: 'path is required' });
+    }
+    
+    const url = imagekitService.generateUrl(path, transformations || []);
+    
     res.json({
-      message: 'Download URL generated successfully',
-      downloadUrl,
-      expiresIn: 3600 // 1 hour
+      message: 'URL generated successfully',
+      url
     });
   } catch (error) {
-    console.error('Download URL generation error:', error);
-    res.status(404).json({ error: error.message || 'Failed to generate download URL' });
+    console.error('URL generation error:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate URL' });
   }
 });
 
-// Delete file from S3
-router.delete('/:folder/:key', authenticateToken, async (req, res) => {
+// Delete file from ImageKit
+router.delete('/file/:fileId', authenticateToken, async (req, res) => {
   try {
-    const { folder, key } = req.params;
-    const fullKey = `${folder}/${key}`;
-
-    await s3Service.deleteFile(fullKey);
-
+    const { fileId } = req.params;
+    await imagekitService.deleteFile(fileId);
+    
     res.json({
       message: 'File deleted successfully'
     });
@@ -148,21 +115,24 @@ router.delete('/:folder/:key', authenticateToken, async (req, res) => {
   }
 });
 
-// Get file info/metadata
-router.get('/:folder/:key/info', authenticateToken, async (req, res) => {
+// Generate thumbnail URL
+router.post('/thumbnail', authenticateToken, async (req, res) => {
   try {
-    const { folder, key } = req.params;
-    const fullKey = `${folder}/${key}`;
-
-    const fileInfo = await s3Service.getFileInfo(fullKey);
-
+    const { path, width, height } = req.body;
+    
+    if (!path) {
+      return res.status(400).json({ error: 'path is required' });
+    }
+    
+    const thumbnailUrl = imagekitService.generateThumbnailUrl(path, width, height);
+    
     res.json({
-      message: 'File info retrieved successfully',
-      fileInfo
+      message: 'Thumbnail URL generated successfully',
+      thumbnailUrl
     });
   } catch (error) {
-    console.error('File info retrieval error:', error);
-    res.status(404).json({ error: error.message || 'Failed to get file info' });
+    console.error('Thumbnail generation error:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate thumbnail' });
   }
 });
 

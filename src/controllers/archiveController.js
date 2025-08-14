@@ -1,5 +1,5 @@
 const archiveRepository = require('../repositories/archiveRepository');
-const s3Service = require('../services/s3Service');
+const imagekitService = require('../services/imagekitService');
 
 class ArchiveController {
   // Get all archives with optional filters
@@ -55,7 +55,7 @@ class ArchiveController {
     }
   }
 
-  // Create new archive (after S3 upload)
+  // Create new archive (after ImageKit upload)
   async createArchive(req, res) {
     try {
       const userId = req.user.id;
@@ -67,21 +67,19 @@ class ArchiveController {
         date_taken,
         location,
         person_related,
-        s3_key,
+        imagekit_file_id,
+        file_url,
         file_type,
         file_size
       } = req.body;
 
       // Validate required fields
-      if (!title || !s3_key || !file_type) {
+      if (!title || !imagekit_file_id || !file_type || !file_url) {
         return res.status(400).json({
           success: false,
-          error: 'Title, S3 key, and file type are required'
+          error: 'Title, ImageKit file ID, file type, and file URL are required'
         });
       }
-
-      // Generate S3 URL for the file
-      const file_url = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3_key}`;
 
       const archiveData = {
         title,
@@ -94,7 +92,7 @@ class ArchiveController {
         date_taken: date_taken || null,
         location,
         person_related,
-        s3_key
+        imagekit_file_id
       };
 
       const newArchive = await archiveRepository.createArchive(archiveData, userId);
@@ -143,7 +141,7 @@ class ArchiveController {
     }
   }
 
-  // Delete archive (removes both DB record and S3 file)
+  // Delete archive (removes both DB record and ImageKit file)
   async deleteArchive(req, res) {
     try {
       const { id } = req.params;
@@ -158,13 +156,13 @@ class ArchiveController {
         });
       }
 
-      // Delete file from S3 if s3_key exists
-      if (deletedArchive.s3_key) {
+      // Delete file from ImageKit if imagekit_file_id exists
+      if (deletedArchive.imagekit_file_id) {
         try {
-          await s3Service.deleteFile(deletedArchive.s3_key);
-        } catch (s3Error) {
-          console.error('Error deleting file from S3:', s3Error);
-          // Continue with the response even if S3 deletion fails
+          await imagekitService.deleteFile(deletedArchive.imagekit_file_id);
+        } catch (imagekitError) {
+          console.error('Error deleting file from ImageKit:', imagekitError);
+          // Continue with the response even if ImageKit deletion fails
         }
       }
 
@@ -231,20 +229,19 @@ class ArchiveController {
         });
       }
 
-      if (!archive.s3_key) {
+      if (!archive.file_url) {
         return res.status(400).json({
           success: false,
           error: 'Archive file not available for download'
         });
       }
 
-      const downloadUrl = await s3Service.generatePresignedDownloadUrl(archive.s3_key);
-      
+      // For ImageKit, the file_url can be used directly for downloads
+      // No need to generate a presigned URL as ImageKit URLs are publicly accessible
       res.json({
         success: true,
-        downloadUrl,
-        filename: archive.title,
-        expiresIn: 3600 // 1 hour
+        downloadUrl: archive.file_url,
+        filename: archive.title
       });
     } catch (error) {
       console.error('Error generating download URL:', error);

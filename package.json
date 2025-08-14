@@ -6,6 +6,10 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
+    "build": "npm run clean && npm run copy-files",
+    "clean": "rimraf dist",
+    "copy-files": "cp -r src dist && cp package*.json dist/",
+    "build:prod": "npm run build && cd dist && npm ci --only=production",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -27,14 +31,17 @@
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
+    "imagekit": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "multer": "^2.0.2",
     "nodemailer": "^7.0.5",
     "pg": "^8.11.3",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "rimraf": "^5.0.5"
   },
   "engines": {
     "node": ">=16.0.0"
