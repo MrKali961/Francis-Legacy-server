@@ -13,6 +13,7 @@ const newsRoutes = require('./routes/news');
 const uploadRoutes = require('./routes/upload');
 const adminRoutes = require('./routes/admin');
 const timelineRoutes = require('./routes/timeline');
+const archiveRoutes = require('./routes/archives');
 
 const app = express();
 
@@ -58,7 +59,7 @@ const authLimiter = rateLimit({
 
 // CORS configuration - environment specific
 const corsOptions = {
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://francislegacy.org'],
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://francislegacy.org', 'https://francis-legacy.vercel.app/'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -95,6 +96,7 @@ app.use('/api/news', newsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/timeline', timelineRoutes);
+app.use('/api/archives', archiveRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -112,7 +114,7 @@ app.use((error, req, res, next) => {
     ip: req.ip,
     timestamp: new Date().toISOString()
   };
-  
+
   if (isProduction) {
     // In production, log to proper logging service
     console.error('Production error:', JSON.stringify(errorDetails));
@@ -122,14 +124,14 @@ app.use((error, req, res, next) => {
 
   // Handle specific error types
   if (error.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ 
+    return res.status(400).json({
       error: 'File size too large',
       maxSize: '10MB'
     });
   }
 
   if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-    return res.status(503).json({ 
+    return res.status(503).json({
       error: 'Service temporarily unavailable',
       message: 'Please try again later'
     });
