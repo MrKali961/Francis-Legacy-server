@@ -1,30 +1,30 @@
-const archiveRepository = require('../repositories/archiveRepository');
-const imagekitService = require('../services/imagekitService');
+const archiveRepository = require("../repositories/archiveRepository");
+const imagekitService = require("../services/imagekitService");
 
 class ArchiveController {
   // Get all archives with optional filters
   async getArchives(req, res) {
     try {
       const { category, type, search, decade } = req.query;
-      
+
       const filters = {};
-      if (category && category !== 'All') filters.category = category;
-      if (type && type !== 'All') filters.type = type;
+      if (category && category !== "All") filters.category = category;
+      if (type && type !== "All") filters.type = type;
       if (search) filters.search = search;
-      if (decade && decade !== 'All') filters.decade = decade;
+      if (decade && decade !== "All") filters.decade = decade;
 
       const archives = await archiveRepository.getAllArchives(filters);
-      
+
       res.json({
         success: true,
         data: archives,
-        count: archives.length
+        count: archives.length,
       });
     } catch (error) {
-      console.error('Error getting archives:', error);
+      console.error("Error getting archives:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch archives'
+        error: "Failed to fetch archives",
       });
     }
   }
@@ -34,23 +34,23 @@ class ArchiveController {
     try {
       const { id } = req.params;
       const archive = await archiveRepository.getArchiveById(id);
-      
+
       if (!archive) {
         return res.status(404).json({
           success: false,
-          error: 'Archive not found'
+          error: "Archive not found",
         });
       }
 
       res.json({
         success: true,
-        data: archive
+        data: archive,
       });
     } catch (error) {
-      console.error('Error getting archive by ID:', error);
+      console.error("Error getting archive by ID:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch archive'
+        error: "Failed to fetch archive",
       });
     }
   }
@@ -70,14 +70,15 @@ class ArchiveController {
         imagekit_file_id,
         file_url,
         file_type,
-        file_size
+        file_size,
       } = req.body;
 
       // Validate required fields
       if (!title || !imagekit_file_id || !file_type || !file_url) {
         return res.status(400).json({
           success: false,
-          error: 'Title, ImageKit file ID, file type, and file URL are required'
+          error:
+            "Title, ImageKit file ID, file type, and file URL are required",
         });
       }
 
@@ -92,21 +93,24 @@ class ArchiveController {
         date_taken: date_taken || null,
         location,
         person_related,
-        imagekit_file_id
+        imagekit_file_id,
       };
 
-      const newArchive = await archiveRepository.createArchive(archiveData, userId);
+      const newArchive = await archiveRepository.createArchive(
+        archiveData,
+        userId
+      );
 
       res.status(201).json({
         success: true,
-        message: 'Archive created successfully',
-        data: newArchive
+        message: "Archive created successfully",
+        data: newArchive,
       });
     } catch (error) {
-      console.error('Error creating archive:', error);
+      console.error("Error creating archive:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to create archive'
+        error: "Failed to create archive",
       });
     }
   }
@@ -118,25 +122,29 @@ class ArchiveController {
       const userId = req.user.id;
       const archiveData = req.body;
 
-      const updatedArchive = await archiveRepository.updateArchive(id, archiveData, userId);
-      
+      const updatedArchive = await archiveRepository.updateArchive(
+        id,
+        archiveData,
+        userId
+      );
+
       if (!updatedArchive) {
         return res.status(404).json({
           success: false,
-          error: 'Archive not found or you do not have permission to update it'
+          error: "Archive not found or you do not have permission to update it",
         });
       }
 
       res.json({
         success: true,
-        message: 'Archive updated successfully',
-        data: updatedArchive
+        message: "Archive updated successfully",
+        data: updatedArchive,
       });
     } catch (error) {
-      console.error('Error updating archive:', error);
+      console.error("Error updating archive:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to update archive'
+        error: "Failed to update archive",
       });
     }
   }
@@ -148,11 +156,11 @@ class ArchiveController {
       const userId = req.user.id;
 
       const deletedArchive = await archiveRepository.deleteArchive(id, userId);
-      
+
       if (!deletedArchive) {
         return res.status(404).json({
           success: false,
-          error: 'Archive not found or you do not have permission to delete it'
+          error: "Archive not found or you do not have permission to delete it",
         });
       }
 
@@ -161,20 +169,20 @@ class ArchiveController {
         try {
           await imagekitService.deleteFile(deletedArchive.imagekit_file_id);
         } catch (imagekitError) {
-          console.error('Error deleting file from ImageKit:', imagekitError);
+          console.error("Error deleting file from ImageKit:", imagekitError);
           // Continue with the response even if ImageKit deletion fails
         }
       }
 
       res.json({
         success: true,
-        message: 'Archive deleted successfully'
+        message: "Archive deleted successfully",
       });
     } catch (error) {
-      console.error('Error deleting archive:', error);
+      console.error("Error deleting archive:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to delete archive'
+        error: "Failed to delete archive",
       });
     }
   }
@@ -183,16 +191,16 @@ class ArchiveController {
   async getArchiveStats(req, res) {
     try {
       const stats = await archiveRepository.getArchiveStats();
-      
+
       res.json({
         success: true,
-        data: stats
+        data: stats,
       });
     } catch (error) {
-      console.error('Error getting archive stats:', error);
+      console.error("Error getting archive stats:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch archive statistics'
+        error: "Failed to fetch archive statistics",
       });
     }
   }
@@ -202,16 +210,16 @@ class ArchiveController {
     try {
       const userId = req.user.id;
       const archives = await archiveRepository.getUserArchives(userId);
-      
+
       res.json({
         success: true,
-        data: archives
+        data: archives,
       });
     } catch (error) {
-      console.error('Error getting user archives:', error);
+      console.error("Error getting user archives:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch your archives'
+        error: "Failed to fetch your archives",
       });
     }
   }
@@ -221,18 +229,18 @@ class ArchiveController {
     try {
       const { id } = req.params;
       const archive = await archiveRepository.getArchiveById(id);
-      
+
       if (!archive) {
         return res.status(404).json({
           success: false,
-          error: 'Archive not found'
+          error: "Archive not found",
         });
       }
 
       if (!archive.file_url) {
         return res.status(400).json({
           success: false,
-          error: 'Archive file not available for download'
+          error: "Archive file not available for download",
         });
       }
 
@@ -241,13 +249,13 @@ class ArchiveController {
       res.json({
         success: true,
         downloadUrl: archive.file_url,
-        filename: archive.title
+        filename: archive.title,
       });
     } catch (error) {
-      console.error('Error generating download URL:', error);
+      console.error("Error generating download URL:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to generate download URL'
+        error: "Failed to generate download URL",
       });
     }
   }
