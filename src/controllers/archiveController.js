@@ -120,13 +120,13 @@ class ArchiveController {
     try {
       const { id } = req.params;
       const userId = req.user.id;
+      const isAdmin = req.user.role === 'admin';
       const archiveData = req.body;
 
-      const updatedArchive = await archiveRepository.updateArchive(
-        id,
-        archiveData,
-        userId
-      );
+      // For admin users, allow updating any archive
+      const updatedArchive = isAdmin
+        ? await archiveRepository.updateArchiveAsAdmin(id, archiveData)
+        : await archiveRepository.updateArchive(id, archiveData, userId);
 
       if (!updatedArchive) {
         return res.status(404).json({
@@ -154,8 +154,12 @@ class ArchiveController {
     try {
       const { id } = req.params;
       const userId = req.user.id;
+      const isAdmin = req.user.role === 'admin';
 
-      const deletedArchive = await archiveRepository.deleteArchive(id, userId);
+      // For admin users, allow deletion of any archive
+      const deletedArchive = isAdmin 
+        ? await archiveRepository.deleteArchiveAsAdmin(id)
+        : await archiveRepository.deleteArchive(id, userId);
 
       if (!deletedArchive) {
         return res.status(404).json({
@@ -228,28 +232,32 @@ class ArchiveController {
   async getDownloadUrl(req, res) {
     try {
       const { id } = req.params;
+      
+      // First try to get the archive from database
       const archive = await archiveRepository.getArchiveById(id);
 
       if (!archive) {
+        // If not found in database, return a helpful error message
+        // This might happen if the archive was created outside this system
         return res.status(404).json({
           success: false,
-          error: "Archive not found",
+          error: "Archive not found in database. The file may have been uploaded through a different system.",
         });
       }
 
       if (!archive.file_url) {
         return res.status(400).json({
           success: false,
-          error: "Archive file not available for download",
+          error: "Archive file URL not available",
         });
       }
 
       // For ImageKit, the file_url can be used directly for downloads
-      // No need to generate a presigned URL as ImageKit URLs are publicly accessible
+      // Return the direct URL for the client to use
       res.json({
         success: true,
         downloadUrl: archive.file_url,
-        filename: archive.title,
+        filename: archive.title || 'download',
       });
     } catch (error) {
       console.error("Error generating download URL:", error);

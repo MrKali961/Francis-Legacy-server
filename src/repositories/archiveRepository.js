@@ -225,6 +225,65 @@ class ArchiveRepository {
       throw error;
     }
   }
+
+  // Admin-specific methods that don't check user ownership
+  async updateArchiveAsAdmin(id, archiveData) {
+    try {
+      const {
+        title,
+        description,
+        category,
+        tags,
+        date_taken,
+        location,
+        person_related,
+        status
+      } = archiveData;
+
+      const query = `
+        UPDATE archive_items 
+        SET title = $1, description = $2, category = $3, tags = $4,
+            date_taken = $5, location = $6, person_related = $7, 
+            status = $8, updated_at = NOW()
+        WHERE id = $9
+        RETURNING *
+      `;
+
+      const values = [
+        title,
+        description,
+        category,
+        tags,
+        date_taken,
+        location,
+        person_related,
+        status || 'published',
+        id
+      ];
+
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error updating archive as admin:', error);
+      throw error;
+    }
+  }
+
+  async deleteArchiveAsAdmin(id) {
+    try {
+      const query = `
+        DELETE FROM archive_items 
+        WHERE id = $1
+        RETURNING imagekit_file_id
+      `;
+      
+      const result = await pool.query(query, [id]);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error deleting archive as admin:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new ArchiveRepository();
