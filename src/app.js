@@ -69,13 +69,15 @@ const corsOptions = {
     "http://localhost:3000",
     "https://francislegacy.org",
     "https://www.francislegacy.org",
-    "https://francis-legacy.vercel.app/",
+    "https://francis-legacy.vercel.app",
   ],
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept"],
+  exposedHeaders: ["Content-Length", "Content-Type"],
+  maxAge: 86400, // Cache preflight requests for 24 hours (in seconds)
   preflightContinue: false,
-  optionsSuccessStatus: 200,
+  optionsSuccessStatus: 204, // Use 204 for OPTIONS responses (No Content)
 };
 app.use(cors(corsOptions));
 
@@ -89,6 +91,16 @@ if (isProduction) {
 // Body parsing
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// Add cache headers to GET requests to prevent unnecessary OPTIONS requests
+app.use((req, res, next) => {
+  if (req.method === "GET") {
+    // Cache GET requests for 5 minutes by default
+    res.set("Cache-Control", "public, max-age=300");
+    res.set("Vary", "Origin");
+  }
+  next();
+});
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -156,6 +168,10 @@ app.get("/api/stats", async (req, res) => {
       yearsOfHistory = yearDiff > 0 ? `${yearDiff}+` : "1";
     }
 
+    // Set cache headers to avoid unnecessary OPTIONS requests
+    res.set("Cache-Control", "public, max-age=300"); // Cache for 5 minutes
+    res.set("Vary", "Origin");
+
     res.json({
       familyMembers: familyMembers || 0,
       yearsOfHistory: yearsOfHistory,
@@ -165,7 +181,7 @@ app.get("/api/stats", async (req, res) => {
   } catch (error) {
     console.error("Error fetching public stats:", error);
     // Return fallback stats in case of database error
-    res.json({
+    res.status(200).json({
       familyMembers: 0,
       yearsOfHistory: "150+",
       photosAndMedia: 0,
@@ -232,6 +248,10 @@ app.get("/api/family-history/stats", async (req, res) => {
     });
     uniqueLocations = Math.max(uniqueLocations, 1); // At least 1
 
+    // Set cache headers to avoid unnecessary OPTIONS requests
+    res.set("Cache-Control", "public, max-age=300"); // Cache for 5 minutes
+    res.set("Vary", "Origin");
+
     res.json({
       yearsOfHistory: yearsOfHistory,
       generations: generations,
@@ -240,7 +260,7 @@ app.get("/api/family-history/stats", async (req, res) => {
   } catch (error) {
     console.error("Error fetching family history stats:", error);
     // Return fallback stats in case of database error
-    res.json({
+    res.status(200).json({
       yearsOfHistory: "150+",
       generations: 5,
       locations: 12,

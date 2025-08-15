@@ -30,7 +30,7 @@ class FamilyController {
   async createMember(req, res) {
     try {
       const {
-        firstName, lastName, maidenName, birthDate, deathDate,
+        firstName, lastName, maidenName, gender, birthDate, deathDate,
         birthPlace, occupation, biography, profilePhotoUrl,
         fatherId, motherId, spouseId
       } = req.body;
@@ -86,6 +86,10 @@ class FamilyController {
       if (lastName && lastName.trim().length > 50) {
         errors.push('Last name must be 50 characters or less');
       }
+      
+      if (gender && !['M', 'F'].includes(gender.toUpperCase())) {
+        errors.push('Gender must be M (Male) or F (Female)');
+      }
 
       if (errors.length > 0) {
         return res.status(400).json({ 
@@ -98,6 +102,7 @@ class FamilyController {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         maidenName: maidenName && maidenName.trim() !== '' ? maidenName.trim() : null,
+        gender: gender ? gender.toUpperCase() : null,
         birthDate: normalizedBirthDate,
         deathDate: normalizedDeathDate,
         birthPlace: birthPlace && birthPlace.trim() !== '' ? birthPlace.trim() : null,
@@ -120,7 +125,7 @@ class FamilyController {
     try {
       const { id } = req.params;
       const {
-        firstName, lastName, maidenName, birthDate, deathDate,
+        firstName, lastName, maidenName, gender, birthDate, deathDate,
         birthPlace, occupation, biography, profilePhotoUrl,
         fatherId, motherId, spouseId
       } = req.body;
@@ -150,6 +155,7 @@ class FamilyController {
         firstName: firstName && firstName.trim() !== '' ? firstName.trim() : null,
         lastName: lastName && lastName.trim() !== '' ? lastName.trim() : null,
         maidenName: maidenName && maidenName.trim() !== '' ? maidenName.trim() : null,
+        gender: gender ? gender.toUpperCase() : null,
         birthDate: normalizedBirthDate,
         deathDate: normalizedDeathDate,
         birthPlace: birthPlace && birthPlace.trim() !== '' ? birthPlace.trim() : null,
