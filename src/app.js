@@ -95,8 +95,15 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Add cache headers to GET requests to prevent unnecessary OPTIONS requests
 app.use((req, res, next) => {
   if (req.method === "GET") {
-    // Cache GET requests for 5 minutes by default
-    res.set("Cache-Control", "public, max-age=300");
+    // Don't cache dynamic data endpoints that change frequently
+    if (req.path.includes('/api/family') || req.path.includes('/api/admin') || req.path.includes('/api/blog') || req.path.includes('/api/news') || req.path.includes('/api/timeline') || req.path.includes('/api/archives')) {
+      res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.set("Pragma", "no-cache");
+      res.set("Expires", "0");
+    } else {
+      // Cache static/stable GET requests for 5 minutes by default
+      res.set("Cache-Control", "public, max-age=300");
+    }
     res.set("Vary", "Origin");
   }
   next();
