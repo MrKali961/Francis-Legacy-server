@@ -135,3 +135,6 @@ Thumbs.db
 
 # Claude Code
 .claude
+
+# Env
+.env
