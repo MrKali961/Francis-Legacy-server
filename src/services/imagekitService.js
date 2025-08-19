@@ -166,6 +166,111 @@ class ImageKitService {
     }
     return 5 * 1024 * 1024; // 5MB for other files
   }
+
+  /**
+   * Get ImageKit usage metrics (storage and bandwidth)
+   * @returns {Promise<Object>} Usage metrics from ImageKit
+   */
+  async getUsageMetrics() {
+    try {
+      if (!imagekit) {
+        throw new Error('ImageKit not initialized');
+      }
+
+      // Get usage statistics from ImageKit
+      const usage = await imagekit.getUsage();
+      
+      return {
+        storage: {
+          used: usage.storage || 0,
+          limit: usage.storageLimit || 0,
+          percentage: usage.storageLimit > 0 ? ((usage.storage || 0) / usage.storageLimit * 100) : 0
+        },
+        bandwidth: {
+          used: usage.bandwidth || 0,
+          limit: usage.bandwidthLimit || 0,
+          percentage: usage.bandwidthLimit > 0 ? ((usage.bandwidth || 0) / usage.bandwidthLimit * 100) : 0
+        },
+        requests: {
+          used: usage.requests || 0,
+          limit: usage.requestsLimit || 0,
+          percentage: usage.requestsLimit > 0 ? ((usage.requests || 0) / usage.requestsLimit * 100) : 0
+        },
+        planType: usage.planType || 'unknown',
+        resetDate: usage.resetDate || null
+      };
+    } catch (error) {
+      console.error('Error getting ImageKit usage metrics:', error);
+      
+      // If the API call fails, return null to indicate unavailable data
+      // This prevents the application from breaking if ImageKit API is down
+      return {
+        storage: { used: 0, limit: 0, percentage: 0 },
+        bandwidth: { used: 0, limit: 0, percentage: 0 },
+        requests: { used: 0, limit: 0, percentage: 0 },
+        planType: 'unavailable',
+        resetDate: null,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Get file count and total size from ImageKit
+   * @returns {Promise<Object>} File statistics
+   */
+  async getFileStatistics() {
+    try {
+      if (!imagekit) {
+        throw new Error('ImageKit not initialized');
+      }
+
+      // List files to get basic statistics
+      const fileList = await imagekit.listFiles({
+        limit: 1000, // Get up to 1000 files to calculate stats
+        includeFolder: false
+      });
+
+      const totalFiles = fileList.length;
+      const totalSize = fileList.reduce((sum, file) => sum + (file.size || 0), 0);
+      
+      // Group by file type
+      const fileTypes = {
+        images: 0,
+        videos: 0,
+        documents: 0,
+        other: 0
+      };
+
+      fileList.forEach(file => {
+        if (file.fileType && file.fileType.startsWith('image/')) {
+          fileTypes.images++;
+        } else if (file.fileType && file.fileType.startsWith('video/')) {
+          fileTypes.videos++;
+        } else if (file.fileType && (file.fileType.includes('pdf') || file.fileType.includes('document'))) {
+          fileTypes.documents++;
+        } else {
+          fileTypes.other++;
+        }
+      });
+
+      return {
+        totalFiles,
+        totalSize,
+        fileTypes,
+        hasMore: fileList.length === 1000 // Indicates if there are more files beyond the limit
+      };
+    } catch (error) {
+      console.error('Error getting ImageKit file statistics:', error);
+      return {
+        totalFiles: 0,
+        totalSize: 0,
+        fileTypes: { images: 0, videos: 0, documents: 0, other: 0 },
+        hasMore: false,
+        error: error.message
+      };
+    }
+  }
 }
 
 module.exports = new ImageKitService();

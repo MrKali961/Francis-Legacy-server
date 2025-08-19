@@ -1,6 +1,6 @@
 const express = require('express');
 const imagekitService = require('../services/imagekitService');
-const { authenticateToken } = require('../middleware/auth');
+const { sessionAuth } = require('../middleware/sessionAuth');
 const multer = require('multer');
 const router = express.Router();
 
@@ -13,7 +13,7 @@ const upload = multer({
 });
 
 // Get ImageKit authentication parameters for client-side upload
-router.get('/auth', authenticateToken, async (req, res) => {
+router.get('/auth', sessionAuth, async (req, res) => {
   try {
     const authParams = imagekitService.generateUploadAuth();
     
@@ -29,7 +29,7 @@ router.get('/auth', authenticateToken, async (req, res) => {
 });
 
 // Server-side file upload to ImageKit
-router.post('/:folder/upload', authenticateToken, upload.single('file'), async (req, res) => {
+router.post('/:folder/upload', sessionAuth, upload.single('file'), async (req, res) => {
   try {
     const { folder } = req.params;
     const file = req.file;
@@ -64,7 +64,7 @@ router.post('/:folder/upload', authenticateToken, upload.single('file'), async (
 });
 
 // Get file details from ImageKit
-router.get('/file/:fileId', authenticateToken, async (req, res) => {
+router.get('/file/:fileId', sessionAuth, async (req, res) => {
   try {
     const { fileId } = req.params;
     const fileDetails = await imagekitService.getFileDetails(fileId);
@@ -80,7 +80,7 @@ router.get('/file/:fileId', authenticateToken, async (req, res) => {
 });
 
 // Generate URL with transformations
-router.post('/url', authenticateToken, async (req, res) => {
+router.post('/url', sessionAuth, async (req, res) => {
   try {
     const { path, transformations } = req.body;
     
@@ -101,7 +101,7 @@ router.post('/url', authenticateToken, async (req, res) => {
 });
 
 // Delete file from ImageKit
-router.delete('/file/:fileId', authenticateToken, async (req, res) => {
+router.delete('/file/:fileId', sessionAuth, async (req, res) => {
   try {
     const { fileId } = req.params;
     await imagekitService.deleteFile(fileId);
@@ -116,7 +116,7 @@ router.delete('/file/:fileId', authenticateToken, async (req, res) => {
 });
 
 // Generate thumbnail URL
-router.post('/thumbnail', authenticateToken, async (req, res) => {
+router.post('/thumbnail', sessionAuth, async (req, res) => {
   try {
     const { path, width, height } = req.body;
     

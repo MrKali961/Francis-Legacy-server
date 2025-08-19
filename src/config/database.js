@@ -25,7 +25,6 @@ if (isTestMode) {
   pool.on('error', (err) => {
     console.error('Database connection error:', err);
     console.log('Falling back to test database...');
-    module.exports = require('./database-test');
   });
 
   module.exports = pool;

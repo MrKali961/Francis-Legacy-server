@@ -3,6 +3,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
+const cookieParser = require("cookie-parser");
 require("dotenv").config();
 
 // Import routes
@@ -38,7 +39,7 @@ app.use(
 const isProduction = process.env.NODE_ENV === "production";
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isProduction ? 50 : 1000, // much higher limit for development
+  max: isProduction ? 50 : 10000, // much higher limit for development
   message: {
     error: "Too many requests from this IP, please try again later.",
     retryAfter: "15 minutes",
@@ -51,7 +52,7 @@ app.use(limiter);
 // Stricter rate limiting for auth endpoints
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isProduction ? 5 : 100, // more permissive for development
+  max: isProduction ? 5 : 1000, // more permissive for development
   message: {
     error: "Too many authentication attempts, please try again later.",
     retryAfter: "15 minutes",
@@ -88,9 +89,10 @@ if (isProduction) {
   app.use(morgan("dev"));
 }
 
-// Body parsing
+// Body parsing and cookie parsing
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(cookieParser());
 
 // Add cache headers to GET requests to prevent unnecessary OPTIONS requests
 app.use((req, res, next) => {

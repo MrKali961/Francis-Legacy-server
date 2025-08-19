@@ -1,4 +1,5 @@
 const newsRepository = require('../repositories/newsRepository');
+const adminRepository = require('../repositories/adminRepository');
 
 class NewsController {
   async getAllArticles(req, res) {
@@ -42,6 +43,19 @@ class NewsController {
         status
       });
 
+      // Log admin action if user is admin
+      if (req.user && req.user.role === 'admin') {
+        await adminRepository.logAdminAction(
+          req.user.id,
+          'CREATE_NEWS_ARTICLE',
+          'news_article',
+          article.id,
+          { title, status },
+          req.ip,
+          req.get('User-Agent')
+        );
+      }
+
       res.status(201).json(article);
     } catch (error) {
       console.error('Error creating news article:', error);
@@ -67,6 +81,19 @@ class NewsController {
         return res.status(404).json({ error: 'News article not found' });
       }
 
+      // Log admin action if user is admin
+      if (req.user && req.user.role === 'admin') {
+        await adminRepository.logAdminAction(
+          req.user.id,
+          'UPDATE_NEWS_ARTICLE',
+          'news_article',
+          id,
+          { title, status },
+          req.ip,
+          req.get('User-Agent')
+        );
+      }
+
       res.json(article);
     } catch (error) {
       console.error('Error updating news article:', error);
@@ -81,6 +108,19 @@ class NewsController {
 
       if (!article) {
         return res.status(404).json({ error: 'News article not found' });
+      }
+
+      // Log admin action if user is admin
+      if (req.user && req.user.role === 'admin') {
+        await adminRepository.logAdminAction(
+          req.user.id,
+          'DELETE_NEWS_ARTICLE',
+          'news_article',
+          id,
+          { title: article.title },
+          req.ip,
+          req.get('User-Agent')
+        );
       }
 
       res.json({ message: 'News article deleted successfully' });

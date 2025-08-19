@@ -1,32 +1,44 @@
 const express = require('express');
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { sessionAuth } = require('../middleware/sessionAuth');
 const adminController = require('../controllers/adminController');
 const archiveController = require('../controllers/archiveController');
 const router = express.Router();
 
-router.get('/dashboard/stats', authenticateToken, requireAdmin, adminController.getDashboardStats);
+// Middleware to check admin role
+const requireAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+};
 
-router.get('/users', authenticateToken, requireAdmin, adminController.getAllUsers);
+router.get('/dashboard/stats', sessionAuth, requireAdmin, adminController.getDashboardStats);
 
-router.post('/users', authenticateToken, requireAdmin, adminController.createUser);
+router.get('/users', sessionAuth, requireAdmin, adminController.getAllUsers);
 
-router.put('/users/:id', authenticateToken, requireAdmin, adminController.updateUser);
+router.post('/users', sessionAuth, requireAdmin, adminController.createUser);
 
-router.delete('/users/:id', authenticateToken, requireAdmin, adminController.deleteUser);
+router.put('/users/:id', sessionAuth, requireAdmin, adminController.updateUser);
 
-router.get('/submissions', authenticateToken, requireAdmin, adminController.getSubmissions);
+router.delete('/users/:id', sessionAuth, requireAdmin, adminController.deleteUser);
 
-router.put('/submissions/:id', authenticateToken, requireAdmin, adminController.reviewSubmission);
+router.get('/submissions', sessionAuth, requireAdmin, adminController.getSubmissions);
 
-router.get('/audit-log', authenticateToken, requireAdmin, adminController.getAuditLog);
+router.put('/submissions/:id', sessionAuth, requireAdmin, adminController.reviewSubmission);
 
-router.post('/users/:id/reset-password', authenticateToken, requireAdmin, adminController.resetUserPassword);
+router.get('/audit-log', sessionAuth, requireAdmin, adminController.getAuditLog);
+
+router.post('/users/:id/reset-password', sessionAuth, requireAdmin, adminController.resetUserPassword);
+
+router.post('/family-members/:id/reset-password', sessionAuth, requireAdmin, adminController.resetFamilyMemberPassword);
+
+router.get('/storage-stats', sessionAuth, requireAdmin, adminController.getStorageStats);
 
 // Admin archive management routes
-router.get('/archives', authenticateToken, requireAdmin, archiveController.getArchives);
-router.get('/archives/:id', authenticateToken, requireAdmin, archiveController.getArchiveById);
-router.post('/archives', authenticateToken, requireAdmin, archiveController.createArchive);
-router.put('/archives/:id', authenticateToken, requireAdmin, archiveController.updateArchive);
-router.delete('/archives/:id', authenticateToken, requireAdmin, archiveController.deleteArchive);
+router.get('/archives', sessionAuth, requireAdmin, archiveController.getArchives);
+router.get('/archives/:id', sessionAuth, requireAdmin, archiveController.getArchiveById);
+router.post('/archives', sessionAuth, requireAdmin, archiveController.createArchive);
+router.put('/archives/:id', sessionAuth, requireAdmin, archiveController.updateArchive);
+router.delete('/archives/:id', sessionAuth, requireAdmin, archiveController.deleteArchive);
 
 module.exports = router;

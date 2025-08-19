@@ -24,20 +24,31 @@ class UserRepository {
 
   async update(id, userData) {
     const { firstName, lastName, email, phone, birthDate, isActive, role } = userData;
+    
+    // First check if user exists
+    const userExists = await pool.query('SELECT id FROM users WHERE id = $1', [id]);
+    if (userExists.rows.length === 0) {
+      throw new Error('User not found or has been deleted');
+    }
+    
+    // Convert empty strings to null for date fields
+    const normalizedBirthDate = birthDate && birthDate.trim() !== '' ? birthDate : null;
+    const normalizedPhone = phone && phone.trim() !== '' ? phone : null;
+    
     const result = await pool.query(
       `UPDATE users 
        SET first_name = $1, last_name = $2, email = $3, phone = $4, 
            birth_date = $5, is_active = $6, role = $7, updated_at = NOW()
        WHERE id = $8
        RETURNING id, email, first_name, last_name, role, is_active, updated_at`,
-      [firstName, lastName, email, phone, birthDate, isActive, role, id]
+      [firstName, lastName, email, normalizedPhone, normalizedBirthDate, isActive, role, id]
     );
     return result.rows[0];
   }
 
   async updatePassword(id, hashedPassword) {
     const result = await pool.query(
-      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      'UPDATE users SET password_hash = $1, password_changed = true, updated_at = NOW() WHERE id = $2',
       [hashedPassword, id]
     );
     return result.rowCount > 0;
@@ -46,6 +57,15 @@ class UserRepository {
   async deactivate(id) {
     const result = await pool.query(
       `UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1 
+       RETURNING email, first_name, last_name`,
+      [id]
+    );
+    return result.rows[0];
+  }
+
+  async delete(id) {
+    const result = await pool.query(
+      `DELETE FROM users WHERE id = $1 
        RETURNING email, first_name, last_name`,
       [id]
     );
@@ -67,6 +87,21 @@ class UserRepository {
   async exists(email) {
     const result = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
     return result.rows.length > 0;
+  }
+
+  async findByUsername(username) {
+    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    return result.rows[0];
+  }
+
+  async updateLastLogin(id) {
+    const result = await pool.query(`
+      UPDATE users 
+      SET last_login = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [id]);
+    return result.rows[0];
   }
 
   async getMemberCount() {

@@ -1,4 +1,5 @@
 const blogRepository = require('../repositories/blogRepository');
+const adminRepository = require('../repositories/adminRepository');
 
 class BlogController {
   async getAllPosts(req, res) {
@@ -84,6 +85,19 @@ class BlogController {
         status
       });
 
+      // Log admin action if user is admin
+      if (req.user && req.user.role === 'admin') {
+        await adminRepository.logAdminAction(
+          req.user.id,
+          'CREATE_BLOG_POST',
+          'blog_post',
+          post.id,
+          { title: title.trim(), status },
+          req.ip,
+          req.get('User-Agent')
+        );
+      }
+
       res.status(201).json(post);
     } catch (error) {
       console.error('Error creating blog post:', error);
@@ -109,6 +123,19 @@ class BlogController {
         return res.status(404).json({ error: 'Blog post not found' });
       }
 
+      // Log admin action if user is admin
+      if (req.user && req.user.role === 'admin') {
+        await adminRepository.logAdminAction(
+          req.user.id,
+          'UPDATE_BLOG_POST',
+          'blog_post',
+          id,
+          { title, status },
+          req.ip,
+          req.get('User-Agent')
+        );
+      }
+
       res.json(post);
     } catch (error) {
       console.error('Error updating blog post:', error);
@@ -123,6 +150,19 @@ class BlogController {
 
       if (!post) {
         return res.status(404).json({ error: 'Blog post not found' });
+      }
+
+      // Log admin action if user is admin
+      if (req.user && req.user.role === 'admin') {
+        await adminRepository.logAdminAction(
+          req.user.id,
+          'DELETE_BLOG_POST',
+          'blog_post',
+          id,
+          { title: post.title },
+          req.ip,
+          req.get('User-Agent')
+        );
       }
 
       res.json({ message: 'Blog post deleted successfully' });

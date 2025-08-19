@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const storageStatsService = require('../services/storageStatsService');
 
 class AdminRepository {
   async getDashboardStats() {
@@ -7,7 +8,7 @@ class AdminRepository {
       pool.query('SELECT COUNT(*) as total FROM family_members'),
       pool.query('SELECT COUNT(*) as total FROM blog_posts WHERE status = $1', ['published']),
       pool.query('SELECT COUNT(*) as total FROM news_articles WHERE status = $1', ['published']),
-      pool.query('SELECT COUNT(*) as total FROM archive_items WHERE status = $1', ['approved']),
+      pool.query('SELECT COUNT(*) as total FROM archive_items WHERE status = $1', ['published']),
       pool.query('SELECT COUNT(*) as total FROM content_submissions WHERE status = $1', ['pending']),
     ]);
 
@@ -16,7 +17,7 @@ class AdminRepository {
       familyTreeMembers: parseInt(stats[1].rows[0].total),
       publishedBlogs: parseInt(stats[2].rows[0].total),
       publishedNews: parseInt(stats[3].rows[0].total),
-      approvedArchives: parseInt(stats[4].rows[0].total),
+      publishedArchives: parseInt(stats[4].rows[0].total),
       pendingSubmissions: parseInt(stats[5].rows[0].total),
     };
   }
@@ -131,6 +132,15 @@ class AdminRepository {
       INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, details, ip_address, user_agent)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
     `, [adminId, action, targetType, targetId, JSON.stringify(details), ipAddress, userAgent]);
+  }
+
+  async getStorageStats() {
+    try {
+      return await storageStatsService.getCompleteStorageStats();
+    } catch (error) {
+      console.error('Error getting storage stats in repository:', error);
+      throw error;
+    }
   }
 }
 

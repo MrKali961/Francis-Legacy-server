@@ -1,7 +1,14 @@
 const express = require('express');
 const archiveController = require('../controllers/archiveController');
-const { authenticateToken } = require('../middleware/auth');
+const { sessionAuth } = require('../middleware/sessionAuth');
 const router = express.Router();
+
+const requireAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+};
 
 // Public routes (no authentication required for viewing)
 router.get('/', archiveController.getArchives);
@@ -10,7 +17,7 @@ router.get('/:id', archiveController.getArchiveById);
 router.get('/:id/download', archiveController.getDownloadUrl);
 
 // Protected routes (authentication required)
-router.use(authenticateToken); // All routes below require authentication
+router.use(sessionAuth); // All routes below require authentication
 
 router.post('/', archiveController.createArchive);
 router.put('/:id', archiveController.updateArchive);

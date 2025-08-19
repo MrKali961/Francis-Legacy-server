@@ -11,6 +11,7 @@ class TestDatabase {
         role: 'admin',
         is_active: true,
         email_verified: true,
+        password_changed: false, // Default to false so user must change password
         created_at: new Date(),
         updated_at: new Date()
       },
@@ -23,6 +24,7 @@ class TestDatabase {
         role: 'member',
         is_active: true,
         email_verified: true,
+        password_changed: true, // Regular user already changed password
         created_at: new Date(),
         updated_at: new Date()
       }
@@ -34,6 +36,7 @@ class TestDatabase {
     this.content_submissions = [];
     this.admin_audit_log = [];
     this.timeline_events = [];
+    this.user_sessions = [];
   }
 
   async query(sql, params = []) {
@@ -351,6 +354,113 @@ class TestDatabase {
         const deletedArticle = this.news_articles[articleIndex];
         this.news_articles.splice(articleIndex, 1);
         return { rows: [deletedArticle] };
+      }
+      return { rows: [] };
+    }
+    
+    // Handle user_sessions operations for login/logout
+    if (sqlLower.includes('insert into user_sessions')) {
+      const newSession = {
+        id: (this.user_sessions.length + 1).toString(),
+        user_id: params[0],
+        token_hash: params[1],
+        expires_at: params[2],
+        ip_address: params[3],
+        user_agent: params[4],
+        is_active: true,
+        created_at: new Date()
+      };
+      this.user_sessions.push(newSession);
+      return { rows: [newSession] };
+    }
+
+    if (sqlLower.includes('update user_sessions') && sqlLower.includes('is_active = false')) {
+      const tokenHash = params[0];
+      const sessionIndex = this.user_sessions.findIndex(s => s.token_hash === tokenHash);
+      if (sessionIndex !== -1) {
+        this.user_sessions[sessionIndex].is_active = false;
+        return { rows: [this.user_sessions[sessionIndex]] };
+      }
+      return { rows: [] };
+    }
+
+    if (sqlLower.includes('select') && sqlLower.includes('user_sessions')) {
+      if (sqlLower.includes('where token_hash = $1')) {
+        const session = this.user_sessions.find(s => s.token_hash === params[0] && s.is_active);
+        return { rows: session ? [session] : [] };
+      }
+      return { rows: this.user_sessions };
+    }
+
+    // Handle username queries for users table
+    if (sqlLower.includes('select') && sqlLower.includes('users') && sqlLower.includes('where username = $1')) {
+      const user = this.users.find(u => u.username === params[0]);
+      return { rows: user ? [user] : [] };
+    }
+
+    // Handle username queries for family_members table
+    if (sqlLower.includes('select') && sqlLower.includes('family_members') && sqlLower.includes('where username = $1')) {
+      const member = this.family_members.find(m => m.username === params[0]);
+      return { rows: member ? [member] : [] };
+    }
+
+    // Handle family_members queries with is_active check (for session auth)
+    if (sqlLower.includes('select') && sqlLower.includes('family_members') && sqlLower.includes('where id = $1') && sqlLower.includes('is_active = true')) {
+      const member = this.family_members.find(m => m.id === params[0] && m.is_active !== false);
+      return { rows: member ? [member] : [] };
+    }
+
+    // Handle users queries with is_active check (for session auth)
+    if (sqlLower.includes('select') && sqlLower.includes('users') && sqlLower.includes('where id = $1') && sqlLower.includes('is_active = true')) {
+      const user = this.users.find(u => u.id === params[0] && u.is_active !== false);
+      return { rows: user ? [user] : [] };
+    }
+
+    // Handle password updates for users
+    if (sqlLower.includes('update users') && sqlLower.includes('password_hash = $1') && sqlLower.includes('password_changed = true')) {
+      const id = params[1];
+      const userIndex = this.users.findIndex(u => u.id === id);
+      if (userIndex !== -1) {
+        this.users[userIndex].password_hash = params[0];
+        this.users[userIndex].password_changed = true; // Mark password as changed
+        this.users[userIndex].updated_at = new Date();
+        return { rowCount: 1 };
+      }
+      return { rowCount: 0 };
+    }
+
+    // Handle last login updates for users
+    if (sqlLower.includes('update users') && sqlLower.includes('last_login = now()')) {
+      const id = params[0];
+      const userIndex = this.users.findIndex(u => u.id === id);
+      if (userIndex !== -1) {
+        this.users[userIndex].last_login = new Date();
+        return { rows: [this.users[userIndex]] };
+      }
+      return { rows: [] };
+    }
+
+    // Handle password updates for family_members
+    if (sqlLower.includes('update family_members') && sqlLower.includes('password_hash = $1') && sqlLower.includes('password_changed = true')) {
+      const newPasswordHash = params[0];
+      const id = params[1];
+      const memberIndex = this.family_members.findIndex(m => m.id === id);
+      if (memberIndex !== -1) {
+        this.family_members[memberIndex].password_hash = newPasswordHash;
+        this.family_members[memberIndex].password_changed = true;
+        this.family_members[memberIndex].updated_at = new Date();
+        return { rows: [this.family_members[memberIndex]] };
+      }
+      return { rows: [] };
+    }
+
+    // Handle last login updates for family_members
+    if (sqlLower.includes('update family_members') && sqlLower.includes('last_login = now()')) {
+      const id = params[0];
+      const memberIndex = this.family_members.findIndex(m => m.id === id);
+      if (memberIndex !== -1) {
+        this.family_members[memberIndex].last_login = new Date();
+        return { rows: [this.family_members[memberIndex]] };
       }
       return { rows: [] };
     }

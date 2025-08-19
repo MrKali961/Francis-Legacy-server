@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const adminRepository = require('../repositories/adminRepository');
 const userRepository = require('../repositories/userRepository');
+const familyRepository = require('../repositories/familyRepository');
 
 const emailService = process.env.NODE_ENV === 'production' 
   ? require('../utils/email') 
@@ -131,7 +132,7 @@ class AdminController {
         return res.status(400).json({ error: 'Cannot delete your own account' });
       }
 
-      const user = await userRepository.deactivate(id);
+      const user = await userRepository.delete(id);
 
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
@@ -147,7 +148,7 @@ class AdminController {
         req.get('User-Agent')
       );
 
-      res.json({ message: 'User deactivated successfully' });
+      res.json({ message: 'User deleted successfully' });
     } catch (error) {
       console.error('Error deleting user:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -288,6 +289,64 @@ class AdminController {
         return res.status(400).json({ error: 'Invalid user ID format' });
       }
       
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async resetFamilyMemberPassword(req, res) {
+    try {
+      const { id } = req.params;
+
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id)) {
+        return res.status(400).json({ error: 'Invalid family member ID format' });
+      }
+
+      const member = await familyRepository.findById(id);
+      if (!member) {
+        return res.status(404).json({ error: 'Family member not found' });
+      }
+
+      // Reset password using repository method
+      const updatedMember = await familyRepository.resetPassword(id);
+      if (!updatedMember) {
+        return res.status(500).json({ error: 'Failed to reset password' });
+      }
+
+      await adminRepository.logAdminAction(
+        req.user.id,
+        'RESET_FAMILY_MEMBER_PASSWORD',
+        'family_member',
+        id,
+        { username: member.username, firstName: member.first_name, lastName: member.last_name },
+        req.ip,
+        req.get('User-Agent')
+      );
+
+      res.json({
+        message: 'Family member password reset successfully',
+        username: member.username,
+        newPassword: updatedMember.new_password,
+        mustChangePassword: true
+      });
+    } catch (error) {
+      console.error('Error resetting family member password:', error);
+      
+      if (error.code === '22P02') {
+        return res.status(400).json({ error: 'Invalid family member ID format' });
+      }
+      
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async getStorageStats(req, res) {
+    try {
+      const stats = await adminRepository.getStorageStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Error fetching storage stats:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }
