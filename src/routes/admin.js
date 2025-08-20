@@ -33,6 +33,8 @@ router.post('/users/:id/reset-password', sessionAuth, requireAdmin, adminControl
 router.post('/family-members/:id/reset-password', sessionAuth, requireAdmin, adminController.resetFamilyMemberPassword);
 
 router.get('/storage-stats', sessionAuth, requireAdmin, adminController.getStorageStats);
+router.get('/imagekit-stats', sessionAuth, requireAdmin, adminController.getImageKitStats);
+router.get('/enhanced-storage-stats', sessionAuth, requireAdmin, adminController.getEnhancedStorageStats);
 
 // Admin archive management routes
 router.get('/archives', sessionAuth, requireAdmin, archiveController.getArchives);

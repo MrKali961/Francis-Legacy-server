@@ -15,6 +15,7 @@ const uploadRoutes = require("./routes/upload");
 const adminRoutes = require("./routes/admin");
 const timelineRoutes = require("./routes/timeline");
 const archiveRoutes = require("./routes/archives");
+const submissionRoutes = require("./routes/submissions");
 
 const app = express();
 
@@ -129,6 +130,7 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/timeline", timelineRoutes);
 app.use("/api/archives", archiveRoutes);
+app.use("/api/submissions", submissionRoutes);
 
 // Public stats endpoint for homepage
 app.get("/api/stats", async (req, res) => {

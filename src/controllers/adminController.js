@@ -3,6 +3,8 @@ const crypto = require('crypto');
 const adminRepository = require('../repositories/adminRepository');
 const userRepository = require('../repositories/userRepository');
 const familyRepository = require('../repositories/familyRepository');
+const storageStatsService = require('../services/storageStatsService');
+const submissionRepository = require('../repositories/submissionRepository');
 
 const emailService = process.env.NODE_ENV === 'production' 
   ? require('../utils/email') 
@@ -157,7 +159,7 @@ class AdminController {
 
   async getSubmissions(req, res) {
     try {
-      const submissions = await adminRepository.getContentSubmissions();
+      const submissions = await submissionRepository.getAllSubmissions();
       res.json(submissions);
     } catch (error) {
       console.error('Error fetching submissions:', error);
@@ -174,7 +176,7 @@ class AdminController {
         return res.status(400).json({ error: 'Invalid status' });
       }
 
-      const submission = await adminRepository.updateSubmissionStatus(id, status, req.user.id, reviewNotes);
+      const submission = await submissionRepository.updateSubmissionStatus(id, status, req.user.id, reviewNotes);
 
       if (!submission) {
         return res.status(404).json({ error: 'Submission not found' });
@@ -185,16 +187,29 @@ class AdminController {
         
         try {
           if (submission.type === 'news') {
-            await adminRepository.createNewsFromSubmission(content, submission.submitted_by);
+            await submissionRepository.createNewsFromSubmission(content, submission.submitted_by || submission.submitted_by_family_member, id);
           } else if (submission.type === 'blog') {
-            await adminRepository.createBlogFromSubmission(content, submission.submitted_by);
+            await submissionRepository.createBlogFromSubmission(content, submission.submitted_by || submission.submitted_by_family_member, id);
           } else if (submission.type === 'archive') {
-            await adminRepository.createArchiveFromSubmission(content, submission.submitted_by, req.user.id);
+            await submissionRepository.createArchiveFromSubmission(content, submission.submitted_by || submission.submitted_by_family_member, req.user.id, id);
           }
         } catch (contentError) {
           console.error('Error creating approved content:', contentError);
-          await adminRepository.revertSubmissionStatus(id);
+          await submissionRepository.revertSubmissionStatus(id);
           return res.status(500).json({ error: 'Failed to create approved content' });
+        }
+      } else if (status === 'rejected') {
+        // Check if this submission was previously approved and has published content
+        const hasPublished = await submissionRepository.hasPublishedContent(id);
+        
+        if (hasPublished) {
+          try {
+            await submissionRepository.deletePublishedContent(id);
+            console.log(`Deleted published content for rejected submission: ${id}`);
+          } catch (deleteError) {
+            console.error('Error deleting published content:', deleteError);
+            // Don't fail the rejection, but log the error
+          }
         }
       }
 
@@ -347,6 +362,26 @@ class AdminController {
       res.json(stats);
     } catch (error) {
       console.error('Error fetching storage stats:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async getImageKitStats(req, res) {
+    try {
+      const stats = await storageStatsService.getImageKitStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Error fetching ImageKit stats:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async getEnhancedStorageStats(req, res) {
+    try {
+      const stats = await storageStatsService.getEnhancedStorageStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Error fetching enhanced storage stats:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }
