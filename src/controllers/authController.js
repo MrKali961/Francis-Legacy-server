@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const pool = require('../config/database');
 const familyRepository = require('../repositories/familyRepository');
 const userRepository = require('../repositories/userRepository');
+const userRateLimiter = require('../middleware/userRateLimiter');
 
 class AuthController {
   async login(req, res) {
@@ -38,22 +39,37 @@ class AuthController {
       }
 
       if (!user || !user.password_hash) {
+        console.log(`🚫 Login attempt failed - user not found: ${username}`);
+        await userRateLimiter.recordFailedAttempt(username);
         return res.status(401).json({ error: 'Invalid username/email or password' });
       }
 
       // Check if account is active
       if (user.is_active === false) {
+        console.log(`🚫 Login attempt failed - account disabled: ${username}`);
+        await userRateLimiter.recordFailedAttempt(username);
         return res.status(401).json({ error: 'Account is disabled' });
       }
 
       // Verify password
       const isPasswordValid = await bcrypt.compare(password, user.password_hash);
       if (!isPasswordValid) {
-        return res.status(401).json({ error: 'Invalid username/email or password' });
+        console.log(`🚫 Login attempt failed - invalid password: ${username} (${userType})`);
+        await userRateLimiter.recordFailedAttempt(username);
+        return res.status(401).json({ 
+          error: 'Invalid username/email or password',
+          debug: process.env.NODE_ENV === 'development' ? 'Password verification failed' : undefined
+        });
       }
 
-      // Generate session token
-      const sessionToken = crypto.randomBytes(32).toString('hex');
+      console.log(`✅ Login successful: ${username} as ${userType} (ID: ${user.id})`);
+      
+      // Clear rate limit for successful authentication
+      await userRateLimiter.clearRateLimit(username);
+
+      // Generate session token with prefix to prevent collisions
+      const tokenBase = crypto.randomBytes(32).toString('hex');
+      const sessionToken = userType === 'admin' ? `admin_${tokenBase}` : `member_${tokenBase}`;
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
       // Store session in appropriate table based on user type
@@ -62,11 +78,13 @@ class AuthController {
           INSERT INTO family_member_sessions (family_member_id, token_hash, expires_at, ip_address, user_agent, is_active)
           VALUES ($1, $2, $3, $4, $5, true)
         `, [user.id, sessionToken, expiresAt, req.ip, req.get('User-Agent')]);
+        console.log(`🔐 Family member session created: ${user.id} (token: ${sessionToken.substring(0, 12)}...)`);
       } else {
         await pool.query(`
           INSERT INTO user_sessions (user_id, token_hash, expires_at, ip_address, user_agent, is_active)
           VALUES ($1, $2, $3, $4, $5, true)
         `, [user.id, sessionToken, expiresAt, req.ip, req.get('User-Agent')]);
+        console.log(`🔐 Admin session created: ${user.id} (token: ${sessionToken.substring(0, 12)}...)`);
       }
 
       // Update last login
@@ -97,7 +115,17 @@ class AuthController {
       });
 
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('🚨 Login error:', error);
+      
+      // Provide more specific error messages in development
+      if (process.env.NODE_ENV === 'development') {
+        return res.status(500).json({ 
+          error: 'Internal server error',
+          debug: error.message,
+          stack: error.stack
+        });
+      }
+      
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -107,18 +135,47 @@ class AuthController {
       const sessionToken = req.cookies.session_token;
 
       if (sessionToken) {
-        // Deactivate session in both tables (one will succeed, one will do nothing)
-        await pool.query(`
-          UPDATE user_sessions 
-          SET is_active = false 
-          WHERE token_hash = $1
-        `, [sessionToken]);
+        console.log(`🚪 Logout attempt with token: ${sessionToken.substring(0, 12)}...`);
         
-        await pool.query(`
-          UPDATE family_member_sessions 
-          SET is_active = false 
-          WHERE token_hash = $1
-        `, [sessionToken]);
+        // Deactivate session based on token prefix
+        if (sessionToken.startsWith('admin_')) {
+          const result = await pool.query(`
+            UPDATE user_sessions 
+            SET is_active = false 
+            WHERE token_hash = $1 AND is_active = true
+            RETURNING user_id
+          `, [sessionToken]);
+          
+          if (result.rows.length > 0) {
+            console.log(`✅ Admin session deactivated for user: ${result.rows[0].user_id}`);
+          }
+        } else if (sessionToken.startsWith('member_')) {
+          const result = await pool.query(`
+            UPDATE family_member_sessions 
+            SET is_active = false 
+            WHERE token_hash = $1 AND is_active = true
+            RETURNING family_member_id
+          `, [sessionToken]);
+          
+          if (result.rows.length > 0) {
+            console.log(`✅ Family member session deactivated for user: ${result.rows[0].family_member_id}`);
+          }
+        } else {
+          // Legacy token - deactivate in both tables
+          await pool.query(`
+            UPDATE user_sessions 
+            SET is_active = false 
+            WHERE token_hash = $1
+          `, [sessionToken]);
+          
+          await pool.query(`
+            UPDATE family_member_sessions 
+            SET is_active = false 
+            WHERE token_hash = $1
+          `, [sessionToken]);
+          
+          console.log(`✅ Legacy session deactivated`);
+        }
       }
 
       // Clear session cookie
@@ -171,11 +228,31 @@ class AuthController {
       // Update password
       if (userType === 'family_member') {
         await familyRepository.updatePassword(userId, newPasswordHash);
+        // Invalidate all sessions for this family member
+        await pool.query(`
+          UPDATE family_member_sessions 
+          SET is_active = false 
+          WHERE family_member_id = $1
+        `, [userId]);
       } else {
         await userRepository.updatePassword(userId, newPasswordHash);
+        // Invalidate all sessions for this admin user
+        await pool.query(`
+          UPDATE user_sessions 
+          SET is_active = false 
+          WHERE user_id = $1
+        `, [userId]);
       }
 
-      res.json({ message: 'Password changed successfully' });
+      // Clear rate limit for password change
+      await userRateLimiter.clearRateLimitByUserId(userId, userType);
+      
+      console.log(`🔐 Password changed for ${userType} ${userId} - all sessions invalidated, rate limit cleared`);
+      res.json({ 
+        message: 'Password changed successfully',
+        sessionInvalidated: true,
+        rateLimitCleared: true
+      });
 
     } catch (error) {
       console.error('Change password error:', error);

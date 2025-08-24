@@ -9,44 +9,67 @@ const sessionAuth = async (req, res, next) => {
     }
 
     // Debug logging - check what token we're working with
-    console.log(`🔍 SessionAuth Debug - Token: ${sessionToken.substring(0, 8)}...`);
+    console.log(`🔍 SessionAuth Debug - Token: ${sessionToken.substring(0, 12)}...`);
 
-    // Find active session - check both admin and family member sessions
+    // Determine session type from token prefix to avoid collision checks
     let session = null;
     let sessionType = null;
 
-    // Check admin user sessions first
-    const adminSessionResult = await pool.query(`
-      SELECT s.*, s.user_id, s.expires_at, s.is_active, 'admin' as session_type
-      FROM user_sessions s
-      WHERE s.token_hash = $1 AND s.is_active = true
-    `, [sessionToken]);
+    if (sessionToken.startsWith('admin_')) {
+      // Admin session - only check admin table
+      const adminSessionResult = await pool.query(`
+        SELECT s.*, s.user_id, s.expires_at, s.is_active, 'admin' as session_type
+        FROM user_sessions s
+        WHERE s.token_hash = $1 AND s.is_active = true
+      `, [sessionToken]);
 
-    // Check family member sessions REGARDLESS of admin result to detect collisions
-    const familySessionResult = await pool.query(`
-      SELECT s.*, s.family_member_id as user_id, s.expires_at, s.is_active, 'family_member' as session_type
-      FROM family_member_sessions s
-      WHERE s.token_hash = $1 AND s.is_active = true
-    `, [sessionToken]);
+      if (adminSessionResult.rows.length > 0) {
+        session = adminSessionResult.rows[0];
+        sessionType = 'admin';
+        console.log(`🔍 SessionAuth Debug - Found admin session for user: ${session.user_id}`);
+      }
+    } else if (sessionToken.startsWith('member_')) {
+      // Family member session - only check family member table
+      const familySessionResult = await pool.query(`
+        SELECT s.*, s.family_member_id as user_id, s.expires_at, s.is_active, 'family_member' as session_type
+        FROM family_member_sessions s
+        WHERE s.token_hash = $1 AND s.is_active = true
+      `, [sessionToken]);
 
-    // Debug logging - show what sessions were found
-    console.log(`🔍 SessionAuth Debug - Admin sessions found: ${adminSessionResult.rows.length}`);
-    console.log(`🔍 SessionAuth Debug - Family sessions found: ${familySessionResult.rows.length}`);
+      if (familySessionResult.rows.length > 0) {
+        session = familySessionResult.rows[0];
+        sessionType = 'family_member';
+        console.log(`🔍 SessionAuth Debug - Found family member session for user: ${session.user_id}`);
+      }
+    } else {
+      // Legacy token without prefix - check both tables for backwards compatibility
+      console.log(`🔍 SessionAuth Debug - Legacy token detected, checking both tables`);
+      
+      const adminSessionResult = await pool.query(`
+        SELECT s.*, s.user_id, s.expires_at, s.is_active, 'admin' as session_type
+        FROM user_sessions s
+        WHERE s.token_hash = $1 AND s.is_active = true
+      `, [sessionToken]);
 
-    // Check for dangerous collision case
-    if (adminSessionResult.rows.length > 0 && familySessionResult.rows.length > 0) {
-      console.error(`🚨 CRITICAL: Session token collision detected! Token ${sessionToken.substring(0, 8)}... found in both session tables!`);
-      return res.status(500).json({ error: 'Session authentication error' });
-    }
+      const familySessionResult = await pool.query(`
+        SELECT s.*, s.family_member_id as user_id, s.expires_at, s.is_active, 'family_member' as session_type
+        FROM family_member_sessions s
+        WHERE s.token_hash = $1 AND s.is_active = true
+      `, [sessionToken]);
 
-    if (adminSessionResult.rows.length > 0) {
-      session = adminSessionResult.rows[0];
-      sessionType = 'admin';
-      console.log(`🔍 SessionAuth Debug - Selected admin session for user: ${session.user_id}`);
-    } else if (familySessionResult.rows.length > 0) {
-      session = familySessionResult.rows[0];
-      sessionType = 'family_member';
-      console.log(`🔍 SessionAuth Debug - Selected family member session for user: ${session.user_id}`);
+      // Check for collision in legacy tokens
+      if (adminSessionResult.rows.length > 0 && familySessionResult.rows.length > 0) {
+        console.error(`🚨 CRITICAL: Legacy session token collision detected! Token ${sessionToken.substring(0, 8)}...`);
+        return res.status(500).json({ error: 'Session authentication error - please login again' });
+      }
+
+      if (adminSessionResult.rows.length > 0) {
+        session = adminSessionResult.rows[0];
+        sessionType = 'admin';
+      } else if (familySessionResult.rows.length > 0) {
+        session = familySessionResult.rows[0];
+        sessionType = 'family_member';
+      }
     }
 
     if (!session) {
@@ -129,22 +152,24 @@ const optionalSessionAuth = async (req, res, next) => {
       return next();
     }
 
-    // Find active session - check both admin and family member sessions
+    // Determine session type from token prefix for optional auth
     let session = null;
     let sessionType = null;
 
-    // Check admin user sessions first
-    const adminSessionResult = await pool.query(`
-      SELECT s.*, s.user_id, s.expires_at, s.is_active, 'admin' as session_type
-      FROM user_sessions s
-      WHERE s.token_hash = $1 AND s.is_active = true
-    `, [sessionToken]);
+    if (sessionToken.startsWith('admin_')) {
+      // Admin session - only check admin table
+      const adminSessionResult = await pool.query(`
+        SELECT s.*, s.user_id, s.expires_at, s.is_active, 'admin' as session_type
+        FROM user_sessions s
+        WHERE s.token_hash = $1 AND s.is_active = true
+      `, [sessionToken]);
 
-    if (adminSessionResult.rows.length > 0) {
-      session = adminSessionResult.rows[0];
-      sessionType = 'admin';
-    } else {
-      // Check family member sessions
+      if (adminSessionResult.rows.length > 0) {
+        session = adminSessionResult.rows[0];
+        sessionType = 'admin';
+      }
+    } else if (sessionToken.startsWith('member_')) {
+      // Family member session - only check family member table
       const familySessionResult = await pool.query(`
         SELECT s.*, s.family_member_id as user_id, s.expires_at, s.is_active, 'family_member' as session_type
         FROM family_member_sessions s
@@ -154,6 +179,29 @@ const optionalSessionAuth = async (req, res, next) => {
       if (familySessionResult.rows.length > 0) {
         session = familySessionResult.rows[0];
         sessionType = 'family_member';
+      }
+    } else {
+      // Legacy token - check both tables
+      const adminSessionResult = await pool.query(`
+        SELECT s.*, s.user_id, s.expires_at, s.is_active, 'admin' as session_type
+        FROM user_sessions s
+        WHERE s.token_hash = $1 AND s.is_active = true
+      `, [sessionToken]);
+
+      if (adminSessionResult.rows.length > 0) {
+        session = adminSessionResult.rows[0];
+        sessionType = 'admin';
+      } else {
+        const familySessionResult = await pool.query(`
+          SELECT s.*, s.family_member_id as user_id, s.expires_at, s.is_active, 'family_member' as session_type
+          FROM family_member_sessions s
+          WHERE s.token_hash = $1 AND s.is_active = true
+        `, [sessionToken]);
+
+        if (familySessionResult.rows.length > 0) {
+          session = familySessionResult.rows[0];
+          sessionType = 'family_member';
+        }
       }
     }
 

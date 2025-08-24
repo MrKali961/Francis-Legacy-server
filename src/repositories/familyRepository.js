@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const bcrypt = require('bcryptjs');
+const userRateLimiter = require('../middleware/userRateLimiter');
 
 class FamilyRepository {
   async getAll() {
@@ -127,6 +128,16 @@ class FamilyRepository {
       WHERE id = $2
       RETURNING *
     `, [passwordHash, id]);
+    
+    // Invalidate all sessions for this family member when password is reset
+    await pool.query(`
+      UPDATE family_member_sessions 
+      SET is_active = false 
+      WHERE family_member_id = $1
+    `, [id]);
+    
+    // Clear rate limit for password reset
+    await userRateLimiter.clearRateLimitByUserId(id, 'family_member');
     
     // Add the username as the new password to the result
     if (result.rows[0]) {

@@ -50,15 +50,11 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Stricter rate limiting for auth endpoints
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: isProduction ? 5 : 1000, // more permissive for development
-  message: {
-    error: "Too many authentication attempts, please try again later.",
-    retryAfter: "15 minutes",
-  },
-});
+// Custom per-user rate limiting for auth endpoints
+const userRateLimiter = require('./middleware/userRateLimiter');
+
+// Auth rate limiter middleware that works entirely per-user
+const authLimiter = userRateLimiter.middleware();
 
 // CORS configuration - environment specific
 const corsOptions = {
@@ -118,8 +114,19 @@ app.get("/health", (req, res) => {
     status: "OK",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development",
+    rateLimiter: userRateLimiter.getStats(),
   });
 });
+
+// Rate limiter monitoring endpoint (development only)
+if (!isProduction) {
+  app.get("/api/rate-limiter/stats", (req, res) => {
+    res.json({
+      ...userRateLimiter.getStats(),
+      message: "Rate limiter statistics (development only)"
+    });
+  });
+}
 
 // API routes with specific rate limiting
 app.use("/api/auth", authLimiter, authRoutes);
