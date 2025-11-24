@@ -4,6 +4,8 @@ services:
     image: postgres:15-alpine
     container_name: francis-legacy-db
     restart: unless-stopped
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: ${DB_NAME:-francis_legacy}
       POSTGRES_USER: ${DB_USER:-postgres}
@@ -25,19 +27,18 @@ services:
       dockerfile: Dockerfile
     container_name: francis-legacy-api
     restart: unless-stopped
-    ports:
-      - "3001:3001"
+    network_mode: host
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      # Database
-      DB_HOST: postgres
+      # Database - use localhost since we're on host network
+      DB_HOST: localhost
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-francis_legacy}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD}
-      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-francis_legacy}
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD}@localhost:5432/${DB_NAME:-francis_legacy}
 
       # Server
       PORT: 3001
@@ -62,8 +63,6 @@ services:
 
       # CORS
       FRONTEND_URL: ${FRONTEND_URL:-https://francislegacy.org}
-    networks:
-      - francis-network
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
