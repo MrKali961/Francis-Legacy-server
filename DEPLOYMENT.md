@@ -69,44 +69,70 @@ cd francis-legacy-server
 
 ### 4. Configure Environment Variables
 
-```bash
-# Copy the production environment template
-cp .env.production .env
+**Option A: Automated Setup (Recommended)**
 
-# Edit the environment file
+```bash
+# Run the interactive setup script
+chmod +x setup-env.sh
+./setup-env.sh
+```
+
+The script will:
+- Generate secure random secrets for JWT and database password
+- Prompt you for AWS and email credentials
+- Create the `.env` file automatically
+
+**Option B: Manual Setup**
+
+```bash
+# Generate secrets first
+echo "JWT Secret:"
+openssl rand -base64 32
+
+echo "DB Password:"
+openssl rand -base64 24
+
+# Create .env file
+cat > .env << 'EOF'
+# Database Configuration
+DB_NAME=francis_legacy
+DB_USER=postgres
+DB_PASSWORD=PASTE_GENERATED_PASSWORD_HERE
+
+# JWT Configuration
+JWT_SECRET=PASTE_GENERATED_JWT_SECRET_HERE
+JWT_EXPIRES_IN=24h
+
+# Server Configuration
+PORT=3001
+NODE_ENV=production
+
+# AWS S3 Configuration
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=your-bucket-name
+
+# Email Configuration
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your_email@gmail.com
+EMAIL_PASSWORD=your_app_password
+
+# CORS
+FRONTEND_URL=https://francislegacy.org
+EOF
+
+# Edit with your actual values
 nano .env
 ```
 
-**Required configurations:**
-
-```env
-# Database - Generate a strong password
-DB_PASSWORD=<generate-strong-password>
-
-# JWT - Generate a random secret (use: openssl rand -base64 32)
-JWT_SECRET=<generate-random-secret>
-
-# AWS S3 Credentials
-AWS_ACCESS_KEY_ID=<your-aws-key>
-AWS_SECRET_ACCESS_KEY=<your-aws-secret>
-AWS_S3_BUCKET=<your-bucket-name>
-
-# Email Configuration
-EMAIL_USER=<your-email@gmail.com>
-EMAIL_PASSWORD=<your-app-password>
-
-# Frontend URL
-FRONTEND_URL=https://francislegacy.org
-```
-
-**Generate secure secrets:**
+**Verify .env file:**
 
 ```bash
-# Generate JWT secret
-openssl rand -base64 32
-
-# Generate database password
-openssl rand -base64 24
+# Check file exists and has content (secrets will be hidden)
+ls -lh .env
+head -5 .env
 ```
 
 ### 5. Initial Deployment (Without SSL)
